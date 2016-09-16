@@ -101,16 +101,114 @@
         tapRecognizer.delaysTouchesBegan = YES;
         [tapRecognizer requireGestureRecognizerToFail:doubleTapRecognizer];
         [self addGestureRecognizer:tapRecognizer];
+        
+        UILongPressGestureRecognizer *longPressGestureRecognizer
+        = [[UILongPressGestureRecognizer alloc] initWithTarget:self
+                                                        action:@selector(longPress:)];
+        
+        [self addGestureRecognizer:longPressGestureRecognizer];
+        
+        _moveRecognizer
+        = [[UIPanGestureRecognizer alloc] initWithTarget:self
+                                                  action:@selector(moveLine:)];
+        
+        _moveRecognizer.delegate = self;
+        _moveRecognizer.cancelsTouchesInView = NO;
+        [self addGestureRecognizer:_moveRecognizer];
+
     }
     return self;
 }
 
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGR {
+    if (gestureRecognizer == self.moveRecognizer) {
+        return YES; }
+    return NO; }
+
+
+- (void)longPress:(UIGestureRecognizer *)gestureRecognizer {
+    if (gestureRecognizer.state == UIGestureRecognizerStateBegan) {
+        CGPoint point = [gestureRecognizer locationInView:self];
+        self.selectedLine = [self lineAtPoint:point];
+        if (self.selectedLine) {
+            [self.currentLines removeAllObjects];
+        }
+    } else if (gestureRecognizer.state == UIGestureRecognizerStateEnded) {
+        self.selectedLine = nil;
+    }
+    [self setNeedsDisplay];
+}
+
+- (void)moveLine:(UIPanGestureRecognizer *)gestureRecognizer {
+    // If we have a selected line ...
+    Line *line = self.selectedLine;
+    if (line) {
+        // When the pan recognizer changes its position...
+        if (gestureRecognizer.state == UIGestureRecognizerStateChanged) {
+            // How far has the pan moved?
+            CGPoint translation = [gestureRecognizer translationInView:self];
+           
+            // Add the translation to the current beginning and end points of the line
+            // Make sure there are no copy and paste typos!
+            CGPoint begin = line.begin;
+            begin.x += translation.x;
+            begin.y += translation.y;
+            line.begin = begin;
+            
+            CGPoint end = line.end;
+            end.x += translation.x;
+            end.y += translation.y;
+            line.end = end;
+            
+            [gestureRecognizer setTranslation:CGPointZero inView:self];
+            
+            // Redraw the screen
+            [self setNeedsDisplay];
+        }
+    } else {
+        // If we have not selected a line, we do not do anything here
+        return; }
+}
+
 - (void)tap:(UIGestureRecognizer *)gestureRecognizer {
     NSLog(@"Recognized a tap");
-    
+   
     CGPoint point = [gestureRecognizer locationInView:self];
     self.selectedLine = [self lineAtPoint:point];
+   
+    // Grab the menu controller
+    UIMenuController *menu = [UIMenuController sharedMenuController];
+
+    if (self.selectedLine) {
+        // Make ourselves the target of menu item action messages
+        [self becomeFirstResponder];
+    
+        // Create a new "Delete" UIMenuItem
+        UIMenuItem *deleteItem = [[UIMenuItem alloc] initWithTitle:@"Delete"
+                                                            action:@selector(deleteLine:)];
+        menu.menuItems = @[deleteItem];
+        
+        // Tell the menu where it should come from and show it
+        [menu setTargetRect:CGRectMake(point.x, point.y, 2, 2) inView:self];
+        [menu setMenuVisible:YES animated:YES];
+    } else {
+        // Hide the menu if no line is selected
+        [menu setMenuVisible:NO animated:YES];
+    }
     [self setNeedsDisplay];
+}
+
+- (BOOL)canBecomeFirstResponder {
+    return YES;
+}
+
+- (void)deleteLine:(id)sender {
+    // Remove the selected line from the list of finishedLines
+    if (self.selectedLine) {
+        [self.finishedLines removeObject:self.selectedLine];
+        [self setNeedsDisplay];
+    }
 }
 
 - (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event {
@@ -119,7 +217,6 @@
     
     [self.currentLines removeAllObjects];
   
-    
     [self setNeedsDisplay];
 }
 
